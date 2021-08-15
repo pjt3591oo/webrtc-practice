@@ -17,7 +17,7 @@ const App = () => {
   let pcs: { [socketId: string]: RTCPeerConnection };
 
   useEffect(() => {
-    let newSocket = io('https://2cd65d38b50a.ngrok.io');
+    let newSocket = io('http://127.0.0.1:3000');
     let localStream: MediaStream;
     
     newSocket.on('all_users', async (users: Array<{ id: string, email: string }>) => {
