@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"
+    integrity="sha384-fKnu0iswBIqkjxrhQCTZ7qlLHOFEgNkRmK2vaO/LbTZSXdJfAu6ewRBdwHPhBo/H"
+    crossorigin="anonymous"></script>
+</head>
+
+<body>
+  <div>
+    <video id="localvideo" autoplay style="width: 100px; height: 100px">
+    </video>
+    <video id='remotevideo' autoplay  style="width: 100px; height: 100px">
+    </video>
+  </div>
+  <script>
+    const socket = io();
+    const pcConfig = {
+      'iceServers': [  {
+          "url": "stun:23.21.150.121"
+        }, {
+          "url": "stun:stun.l.google.com:19302"
+        }
+      ]
+    };
+    let pc = new RTCPeerConnection(pcConfig);
+    const localvideo = document.getElementById('localvideo');
+    const remotevideo = document.getElementById('remotevideo');
+    let isCandidate = false;
+
+    navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    }).then(stream => {
+      // if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+      localvideo.srcObject = stream;
+
+      stream.getTracks().forEach(track => {
+        // 해당 커넥션에 트랙과 스트램을 등록해야 상태방이 setRemoteDescription할 때 해당 track과 stream을 전달함.
+        pc.addTrack(track, stream);
+      })
+      
+      // 서로 통신 채널을 확립하기 위한 방법
+      pc.onicecandidate = function (e) {
+        // if (!isCandidate) {
+          console.log('onicecandidate')
+          isCandidate = true
+          socket.emit('candidate', e.candidate);
+        // }
+      }
+
+      pc.onremovestream = function (e) {
+        console.log('onremovestream');
+      }
+      pc.onremovetrack = function (e) {
+        console.log('onremovetrack');
+      }
+
+      // remote에서 stream이 들어오면 이벤트 발생
+      pc.onaddstream = function (e) {
+        console.log('onaddstream')
+        console.log(e)
+        // onAddStream(pc1, e);
+      };
+  
+      // removete에서 stream이 들어오면 이벤트 발생
+      pc.ontrack = function (e) {
+        console.log('ontrack')
+        remotevideo.srcObject = e.streams[0];
+        // onAddStream(pc1, e);
+      };
+
+      socket.emit('join', {room: 'test'})
+    })
+
+    socket.on('all_user', async (userCount) => {
+      if (userCount > 1) {
+        await createOffer()
+      }
+    })
+
+    socket.on('leave', () => {
+
+      // pc.close(); // cadidate status closed로 바뀜
+    })
+
+    socket.on('receive_offer', async (receiveSDP) => {
+      // setRemoteDescription으로 상대반 sdp를 등록하면 해당 피어는 상대방에게 스트림과 트랙을 얻을 수 있다.
+      // 해당 노도는 onaddstream, ontrack 이벤트를 통해 스트림과 트랙을 얻을 수 있다.
+      // setRemoteDescription이 호출되면 상대방과의 통신 채널이 생성되기 시작하므로 onicecandidate가 반응한다
+      await pc.setRemoteDescription(new RTCSessionDescription(receiveSDP))
+      await createAnswer()
+    })
+
+    socket.on('receive_answer', async (receiveSDP) => {
+      // setRemoteDescription으로 상대반 sdp를 등록하면 해당 피어는 상대방에게 스트림과 트랙을 얻을 수 있다.
+      // 해당 노도는 onaddstream, ontrack 이벤트를 통해 스트림과 트랙을 얻을 수 있다.
+      // setRemoteDescription이 호출되면 상대방과의 통신 채널이 생성되기 시작하므로 onicecandidate가 반응한다
+      await pc.setRemoteDescription(new RTCSessionDescription(receiveSDP))
+    })
+
+    socket.on('receive_candidate', async (candidate) => {
+      // console.log(candidate)
+      await pc.addIceCandidate(new RTCIceCandidate(candidate))
+    })
+
+    async function createOffer() {
+      console.log('createOffer')
+      const sdp = await pc.createOffer({offerToReceiveAudio: true, offerToReceiveVideo: true});
+      await pc.setLocalDescription(new RTCSessionDescription(sdp))
+      socket.emit('offer', sdp)
+    }
+
+    async function createAnswer() {
+      console.log('createAnswer')
+      const sdp = await pc.createAnswer({offerToReceiveAudio: true, offerToReceiveVideo: true});
+      await pc.setLocalDescription(sdp);
+      socket.emit('answer', sdp);
+    }
+  </script>
+</body>
+
+</html>
